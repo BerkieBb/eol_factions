@@ -338,12 +338,6 @@ local function buildMenu(source)
 		}
 	end
 
-	menu.options[#menu.options + 1] = {
-		title = 'Toggle Claimed Territories',
-		description = 'Toggle the visibility of all claimed territories on the map',
-		event = 'eol_factions:client:toggleBlips'
-	}
-
 	if fact.faction.ownerid == Player.PlayerData.citizenid then
 		-- owner of the faction
 		menu.options[#menu.options + 1] = {

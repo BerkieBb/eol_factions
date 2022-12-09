@@ -1,10 +1,3 @@
---#region Variables
-
-local showBlips = false
-local blips = {}
-
---#endregion Variables
-
 --#region Context Menu Registration
 
 lib.registerContext({
@@ -49,31 +42,6 @@ RegisterNetEvent('eol_factions:client:openInput', function(title, input)
 	TriggerServerEvent('eol_factions:server:procInputFeedback', dialog, title, #input)
 end)
 
-AddEventHandler('eol_factions:client:toggleBlips', function()
-	showBlips = not showBlips
-
-	if showBlips then
-		local grids = lib.callback.await('eol_factions:server:getGrids', false)
-		if not grids then return end
-
-		for i = 1, #grids do
-			local blip = AddBlipForArea(grids[i].x, grids[i].y, 0.0, 3.0, 3.0)
-			SetBlipColour(blip, 47)
-			local blip2 = AddBlipForCoord(grids[i].x, grids[i].y, 0.0)
-			SetBlipColour(blip2, 47)
-			BeginTextCommandSetBlipName('STRING')
-			AddTextComponentSubstringPlayerName('Owned Territory')
-			EndTextCommandSetBlipName(blip2)
-			blips[#blips + 1] = blip
-			blips[#blips + 1] = blip2
-		end
-	else
-		for i = 1, #blips do
-			RemoveBlip(blips[i])
-		end
-	end
-end)
-
 AddEventHandler('gameEventTriggered', function (name, args)
 	if name ~= 'CEventNetworkEntityDamage' then return end
 
@@ -87,14 +55,6 @@ AddEventHandler('gameEventTriggered', function (name, args)
 	if success then return end
 
 	error('Something went wrong deducting power on your death')
-end)
-
-AddEventHandler('onResourceStop', function(resource)
-	if resource ~= GetCurrentResourceName() then return end
-
-	for i = 1, #blips do
-		RemoveBlip(blips[i])
-	end
 end)
 
 --#endregion Events
