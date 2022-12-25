@@ -1,5 +1,7 @@
 SavingTime = 10 -- The amount of minutes it takes to save all factions, this loops
 
+Framework = 'QB' -- 'ESX', 'QB', anything else will result in standalone being applied, which means you have to edit the framework.lua to adjust to get your desired identifier or leave it as is which is the license
+
 FactionJobBlacklist = { -- The jobs that can't use the /faction command
     'police',
     'ambulance'

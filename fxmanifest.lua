@@ -4,7 +4,7 @@ game 'gta5'
 name 'eol_factions'
 author 'Vampire#8144 & BerkieB'
 description 'Factions for FiveM like Minecraft'
-version '1.0.0'
+version '1.1.0'
 license 'GNU GPL v3'
 repository 'https://github.com/BerkieBb/eol_factions'
 
@@ -22,6 +22,7 @@ client_scripts {
 
 server_scripts {
 	'@oxmysql/lib/MySQL.lua',
+	'framework.lua',
 	'server.lua',
 }
 
@@ -29,7 +30,5 @@ dependencies {
 	'/server:5848',
 	'/onesync',
 	'oxmysql',
-	'qb-core',
-	'qb-management',
 	'ox_lib'
 }

@@ -1,4 +1,3 @@
-local QBCore = exports['qb-core']:GetCoreObject()
 local factions = {}
 local grids = {}
 
@@ -128,7 +127,7 @@ end
 exports('getFactionPower', getFactionPower)
 
 --- Returns the amount of claims a person has made
----@param id string
+---@param id number
 ---@return integer
 local function getFactionClaims(id)
 	local count = 0
@@ -171,12 +170,12 @@ exports('getOwnedGrids', getOwnedGrids)
 ---@param overtakingFactionId number
 ---@param otherFactionId number
 ---@return boolean
-local function canOverclaim(overtakingFactionId, otherFactionId, overtakingUserId, otherUserId)
+local function canOverclaim(overtakingFactionId, otherFactionId)
 	local overtakingPower = getFactionPower(overtakingFactionId)
 	local otherPower = getFactionPower(otherFactionId)
 
-	local overtakingTurfCount = getFactionClaims(overtakingUserId)
-	local otherTurfCount = getFactionClaims(otherUserId)
+	local overtakingTurfCount = getFactionClaims(overtakingFactionId)
+	local otherTurfCount = getFactionClaims(otherFactionId)
 
 	if overtakingTurfCount >= overtakingPower then return false end -- not enough power
 	if otherPower >= otherTurfCount then return false end -- target too strong
@@ -206,14 +205,14 @@ exports('getTotalFactionPower', totalFactionPower)
 ---@param source number
 ---@return table | nil
 local function factionStatus(source)
-	local Player = QBCore.Functions.GetPlayer(source)
+	local player = GetPlayer(source)
 
-	if not Player then return nil end
+	if not player then return nil end
 
 	for _, v in pairs(factions) do
-		if v.members[Player.PlayerData.citizenid] then
+		if v.members[player.identifier] then
 			local factionInfo = {}
-			factionInfo.user = v.members[Player.PlayerData.citizenid]
+			factionInfo.user = v.members[player.identifier]
 			factionInfo.faction = v
 			return factionInfo
 		end
@@ -253,13 +252,13 @@ end
 ---@param source number
 ---@return table | nil
 local function buildMenu(source)
-	local Player = QBCore.Functions.GetPlayer(source)
+	local player = GetPlayer(source)
 	local fact = factionStatus(source)
 	local ped = GetPlayerPed(source)
 	local coords = GetEntityCoords(ped)
 	local gridOwner = getGridOwner(coords)
 
-	if not Player or not fact then return end
+	if not player or not fact then return end
 
 	local claims = getFactionClaims(fact.faction.id)
 	local power = getFactionPower(fact.faction.id)
@@ -272,7 +271,7 @@ local function buildMenu(source)
 
 	local menu = {
 		id = 'eol_factions_manage_faction_server',
-		title = ('%s | Rank: %s | Claims: %s | Power: %s | Max Power: %s | Balance: %s | %s'):format(fact.faction.name, fact.user.factionrank, claims, power, totalPower, exports['qb-management']:GetGangAccount(fact.faction.name), gridOwnerHeader),
+		title = ('%s | Rank: %s | Claims: %s | Power: %s | Max Power: %s | Balance: %s | %s'):format(fact.faction.name, fact.user.factionrank, claims, power, totalPower, GetFactionBalance(fact.faction.name), gridOwnerHeader),
 		options = {}
 	}
 
@@ -338,7 +337,7 @@ local function buildMenu(source)
 		}
 	end
 
-	if fact.faction.ownerid == Player.PlayerData.citizenid then
+	if fact.faction.ownerid == player.identifier then
 		-- owner of the faction
 		menu.options[#menu.options + 1] = {
 			title = 'Transfer Ownership',
@@ -371,19 +370,19 @@ local function createFaction(source, player, factionName)
 		end
 	end
 
-	local id = MySQL.insert.await('INSERT INTO `eol_factions` (`name`, `ownerid`) VALUES (?, ?) ', {factionName, player.PlayerData.citizenid})
+	local id = MySQL.insert.await('INSERT INTO `eol_factions` (`name`, `ownerid`) VALUES (?, ?) ', {factionName, player.identifier})
 	if not id then return end
 
-	local plyrFact = MySQL.insert.await('INSERT INTO `eol_factionusers` (`identifier`, `factionid`, `power`) VALUES (?, ?, ?) ', {player.PlayerData.citizenid, id, StartingPower})
+	local plyrFact = MySQL.insert.await('INSERT INTO `eol_factionusers` (`identifier`, `factionid`, `power`) VALUES (?, ?, ?) ', {player.identifier, id, StartingPower})
 	if not plyrFact then return end
 
 	factions[id] = {
 		name = factionName,
-		ownerid = player.PlayerData.citizenid,
+		ownerid = player.identifier,
 		id = id,
 		members = {
-			[player.PlayerData.citizenid] = {
-				identifier = player.PlayerData.citizenid,
+			[player.identifier] = {
+				identifier = player.identifier,
 				factionid = id,
 				factionrank = 1,
 				power = StartingPower
@@ -397,7 +396,7 @@ local function createFaction(source, player, factionName)
 	-- success, reopen player menu
 
 	TriggerClientEvent('ox_lib:notify', source, {description = "You created a faction!", type = "success"})
-	TriggerEvent('eol_factions:server:factionCreated', id, source, player.PlayerData.citizenid)
+	TriggerEvent('eol_factions:server:factionCreated', id, source, player.identifier)
 
 	local menu = buildMenu(source)
 	if not menu then return end
@@ -437,18 +436,18 @@ local function inviteMember(source, player, invitingMemberId)
 	if not playerFaction or not hasMenuPermission('invite', playerFaction.user.factionrank) then return end
 
 	if playerFaction and not invitingFaction then
-		local invitingPlayer = QBCore.Functions.GetPlayer(invitingMemberId)
-		local result = MySQL.insert.await('INSERT INTO `eol_factionusers` (`identifier`, `factionid`, `factionrank`, `power`) VALUES (?, ?, ?, ?) ', {invitingPlayer.PlayerData.citizenid, playerFaction.faction.id, playerFaction.user.factionrank + 1, StartingPower})
+		local invitingPlayer = GetPlayer(invitingMemberId)
+		local result = MySQL.insert.await('INSERT INTO `eol_factionusers` (`identifier`, `factionid`, `factionrank`, `power`) VALUES (?, ?, ?, ?) ', {invitingPlayer.identifier, playerFaction.faction.id, playerFaction.user.factionrank + 1, StartingPower})
 		if result then
-			factions[id].members[invitingPlayer.PlayerData.citizenid] = {
-				identifier = invitingPlayer.PlayerData.citizenid,
+			factions[id].members[invitingPlayer.identifier] = {
+				identifier = invitingPlayer.identifier,
 				factionid = playerFaction.faction.id,
 				factionrank = playerFaction.user.factionrank + 1,
 				power = StartingPower
 			}
 			TriggerClientEvent('ox_lib:notify', source, {description = "Person joined your faction!", type = "success"})
 			TriggerClientEvent('ox_lib:notify', invitingMemberId, {description = "You joined the "..playerFaction.faction.name.." faction!", type = "success"})
-			TriggerEvent('eol_factions:server:joinedFaction', id, invitingMemberId, invitingPlayer.PlayerData.citizenid)
+			TriggerEvent('eol_factions:server:joinedFaction', id, invitingMemberId, invitingPlayer.identifier)
 		end
 	else
 		TriggerClientEvent('ox_lib:notify', source, {description = "Person is already in a faction!", type = "error"})
@@ -467,7 +466,7 @@ local function kickMember(source, player, kickingMemberId)
 		return
 	end
 
-	local kickingPlayer = QBCore.Functions.GetPlayer(kickingMemberId)
+	local kickingPlayer = GetPlayer(kickingMemberId)
 	if not kickingPlayer then
 		TriggerClientEvent('ox_lib:notify', source, {description = "This member appears to be asleep.", type = "error"})
 		return
@@ -488,17 +487,17 @@ local function kickMember(source, player, kickingMemberId)
 		return
 	end
 
-	if playerFaction.faction.ownerid == player.PlayerData.citizenid then
+	if playerFaction.faction.ownerid == player.identifier then
 		-- kick anyone
-		MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {kickingPlayer.PlayerData.citizenid})
-		factions[kickingFaction.user.factionid].members[kickingPlayer.PlayerData.citizenid] = nil
-		TriggerEvent('eol_factions:server:kickedFromFaction', kickingFaction.user.factionid, kickingMemberId, kickingPlayer.PlayerData.citizenid)
+		MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {kickingPlayer.identifier})
+		factions[kickingFaction.user.factionid].members[kickingPlayer.identifier] = nil
+		TriggerEvent('eol_factions:server:kickedFromFaction', kickingFaction.user.factionid, kickingMemberId, kickingPlayer.identifier)
 	else
 		-- kick lesser
 		if playerFaction.user.factionrank < kickingFaction.user.factionrank then
-			MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {kickingPlayer.PlayerData.citizenid})
-			factions[kickingFaction.user.factionid].members[kickingPlayer.PlayerData.citizenid] = nil
-			TriggerEvent('eol_factions:server:kickedFromFaction', kickingFaction.user.factionid, kickingMemberId, kickingPlayer.PlayerData.citizenid)
+			MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {kickingPlayer.identifier})
+			factions[kickingFaction.user.factionid].members[kickingPlayer.identifier] = nil
+			TriggerEvent('eol_factions:server:kickedFromFaction', kickingFaction.user.factionid, kickingMemberId, kickingPlayer.identifier)
 		else
 			TriggerClientEvent('ox_lib:notify', source, {description = "You are not a higher rank than this member!", type = "error"})
 		end
@@ -517,7 +516,7 @@ local function promoteMember(source, player, promotingMemberId)
 		return
 	end
 
-	local promotingPlayer = QBCore.Functions.GetPlayer(promotingMemberId)
+	local promotingPlayer = GetPlayer(promotingMemberId)
 	if not promotingPlayer then
 		TriggerClientEvent('ox_lib:notify', source, {description = "This member appears to be asleep.", type = "error"})
 		return
@@ -543,15 +542,15 @@ local function promoteMember(source, player, promotingMemberId)
 		return
 	end
 
-	if playerFaction.faction.ownerid == player.PlayerData.citizenid then
-		factions[promotingFaction.user.factionid].members[promotingPlayer.PlayerData.citizenid].factionrank -= 1
-		TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[promotingFaction.user.factionid].members[promotingPlayer.PlayerData.citizenid].factionrank, type = "success"})
-		TriggerEvent('eol_factions:server:promotedInFaction', promotingFaction.user.factionid, promotingMemberId, promotingPlayer.PlayerData.citizenid)
+	if playerFaction.faction.ownerid == player.identifier then
+		factions[promotingFaction.user.factionid].members[promotingPlayer.identifier].factionrank -= 1
+		TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[promotingFaction.user.factionid].members[promotingPlayer.identifier].factionrank, type = "success"})
+		TriggerEvent('eol_factions:server:promotedInFaction', promotingFaction.user.factionid, promotingMemberId, promotingPlayer.identifier)
 	else
 		if playerFaction.user.factionrank < promotingFaction.user.factionrank then
-			factions[promotingFaction.user.factionid].members[promotingPlayer.PlayerData.citizenid].factionrank -= 1
-			TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[promotingFaction.user.factionid].members[promotingPlayer.PlayerData.citizenid].factionrank, type = "success"})
-			TriggerEvent('eol_factions:server:promotedInFaction', promotingFaction.user.factionid, promotingMemberId, promotingPlayer.PlayerData.citizenid)
+			factions[promotingFaction.user.factionid].members[promotingPlayer.identifier].factionrank -= 1
+			TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[promotingFaction.user.factionid].members[promotingPlayer.identifier].factionrank, type = "success"})
+			TriggerEvent('eol_factions:server:promotedInFaction', promotingFaction.user.factionid, promotingMemberId, promotingPlayer.identifier)
 		else
 			TriggerClientEvent('ox_lib:notify', source, {description = "You are not a higher rank than this member!", type = "error"})
 		end
@@ -570,7 +569,7 @@ local function demoteMember(source, player, demotingMemberId)
 		return
 	end
 
-	local demotingPlayer = QBCore.Functions.GetPlayer(demotingMemberId)
+	local demotingPlayer = GetPlayer(demotingMemberId)
 	if not demotingPlayer then
 		TriggerClientEvent('ox_lib:notify', source, {description = "This member appears to be asleep.", type = "error"})
 		return
@@ -591,15 +590,15 @@ local function demoteMember(source, player, demotingMemberId)
 		return
 	end
 
-	if playerFaction.faction.ownerid == player.PlayerData.citizenid then
-		factions[demotingFaction.user.factionid].members[demotingPlayer.PlayerData.citizenid].factionrank += 1
-		TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[demotingFaction.user.factionid].members[demotingPlayer.PlayerData.citizenid].factionrank, type = "success"})
-		TriggerEvent('eol_factions:server:demotedInFaction', demotingFaction.user.factionid, demotingMemberId, demotingPlayer.PlayerData.citizenid)
+	if playerFaction.faction.ownerid == player.identifier then
+		factions[demotingFaction.user.factionid].members[demotingPlayer.identifier].factionrank += 1
+		TriggerClientEvent('ox_lib:notify', source, {description = "Promoted member to Rank "..factions[demotingFaction.user.factionid].members[demotingPlayer.identifier].factionrank, type = "success"})
+		TriggerEvent('eol_factions:server:demotedInFaction', demotingFaction.user.factionid, demotingMemberId, demotingPlayer.identifier)
 	else
 		if playerFaction.user.factionrank < demotingFaction.user.factionrank then
-			factions[demotingFaction.user.factionid].members[demotingPlayer.PlayerData.citizenid].factionrank += 1
-			TriggerClientEvent('ox_lib:notify', source, {description = "Demoted member to Rank "..factions[demotingFaction.user.factionid].members[demotingPlayer.PlayerData.citizenid].factionrank, type = "success"})
-			TriggerEvent('eol_factions:server:demotedInFaction', demotingFaction.user.factionid, demotingMemberId, demotingPlayer.PlayerData.citizenid)
+			factions[demotingFaction.user.factionid].members[demotingPlayer.identifier].factionrank += 1
+			TriggerClientEvent('ox_lib:notify', source, {description = "Demoted member to Rank "..factions[demotingFaction.user.factionid].members[demotingPlayer.identifier].factionrank, type = "success"})
+			TriggerEvent('eol_factions:server:demotedInFaction', demotingFaction.user.factionid, demotingMemberId, demotingPlayer.identifier)
 		else
 			TriggerClientEvent('ox_lib:notify', source, {description = "You aren't a higher rank than this member!", type = "error"})
 		end
@@ -621,14 +620,14 @@ local function depositMoney(source, player, amount)
 
 	if not hasMenuPermission('deposit', fact.user.factionrank) then return end
 
-	if fact.faction.ownerid ~= player.PlayerData.citizenid then
+	if fact.faction.ownerid ~= player.identifier then
 		TriggerClientEvent('ox_lib:notify', source, {description = "You aren't the owner of your faction", type = "error"})
 		return
 	end
 
-	exports['qb-management']:AddGangMoney(fact.faction.name, amount)
+	AddFactionMoney(fact.faction.name, amount)
 	TriggerClientEvent('ox_lib:notify', source, {description = ("Deposited %s money to the faction!"):format(amount), type = "success"})
-	TriggerEvent('eol_factions:server:depositedMoney', fact.faction.id, source, player.PlayerData.citizenid, amount)
+	TriggerEvent('eol_factions:server:depositedMoney', fact.faction.id, source, player.identifier, amount)
 end
 
 --- Process money withdrawal
@@ -646,14 +645,14 @@ local function withdrawMoney(source, player, amount)
 
 	if not hasMenuPermission('withdraw', fact.user.factionrank) then return end
 
-	if fact.faction.ownerid ~= player.PlayerData.citizenid then
+	if fact.faction.ownerid ~= player.identifier then
 		TriggerClientEvent('ox_lib:notify', source, {description = "You aren't the owner of your faction", type = "error"})
 		return
 	end
 
-	exports['qb-management']:RemoveGangMoney(fact.faction.name, amount)
+	RemoveFactionMoney(fact.faction.name, amount)
 	TriggerClientEvent('ox_lib:notify', source, {description = ("Withdrawn %s money from the faction!"):format(amount), type = "success"})
-	TriggerEvent('eol_factions:server:withdrawnMoney', fact.faction.id, source, player.PlayerData.citizenid, amount)
+	TriggerEvent('eol_factions:server:withdrawnMoney', fact.faction.id, source, player.identifier, amount)
 end
 
 --- Process faction claim
@@ -693,7 +692,7 @@ local function transferOwner(source, player, transferringId)
 		return
 	end
 
-	local transferringPlayer = QBCore.Functions.GetPlayer(transferringId)
+	local transferringPlayer = GetPlayer(transferringId)
 	if not transferringPlayer then
 		TriggerClientEvent('ox_lib:notify', source, {description = "This member appears to be asleep.", type = "error"})
 		return
@@ -707,7 +706,7 @@ local function transferOwner(source, player, transferringId)
 		return
 	end
 
-	if playerFaction.faction.ownerid ~= player.PlayerData.citizenid then return end
+	if playerFaction.faction.ownerid ~= player.identifier then return end
 
 	if playerFaction.faction.id ~= transferingFaction.faction.id then
 		TriggerClientEvent('ox_lib:notify', source, {description = "This person is not in your faction!", type = "error"})
@@ -715,14 +714,14 @@ local function transferOwner(source, player, transferringId)
 	end
 
 	-- first change ranks
-	factions[transferingFaction.user.factionid].members[transferringPlayer.PlayerData.citizenid].factionrank = 1
-	factions[playerFaction.user.factionid].members[player.PlayerData.citizenid].factionrank = 2
+	factions[transferingFaction.user.factionid].members[transferringPlayer.identifier].factionrank = 1
+	factions[playerFaction.user.factionid].members[player.identifier].factionrank = 2
 	-- then change faction ownership
-	factions[playerFaction.faction.id].ownerid = transferringPlayer.PlayerData.citizenid
+	factions[playerFaction.faction.id].ownerid = transferringPlayer.identifier
 
 	TriggerClientEvent('ox_lib:notify', source, {description = "You have transferred ownership of the faction!", type = "success"})
 	TriggerClientEvent('ox_lib:notify', transferringId, {description = "You are now the owner of "..playerFaction.faction.name.."!", type = "success"})
-	TriggerEvent('eol_factions:server:ownerTransfer', playerFaction.faction.id, transferringPlayer.PlayerData.citizenid, player.PlayerData.citizenid)
+	TriggerEvent('eol_factions:server:ownerTransfer', playerFaction.faction.id, transferringPlayer.identifier, player.identifier)
 end
 
 exports('transferOwner', transferOwner)
@@ -730,15 +729,15 @@ exports('transferOwner', transferOwner)
 local function leaveFaction(source, player, faction)
 	if not source or not player or not faction then return end
 
-	if faction.faction.ownerid == player.PlayerData.citizenid then
+	if faction.faction.ownerid == player.identifier then
 		TriggerClientEvent('ox_lib:notify', source, {description = "You cannot leave a faction you own!", type = "error"})
 		return
 	end
 
-	MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {player.PlayerData.citizenid})
-	factions[faction.user.factionid].members[player.PlayerData.citizenid] = nil
+	MySQL.query('DELETE FROM `eol_factionusers` WHERE `identifier` = ?', {player.identifier})
+	factions[faction.user.factionid].members[player.identifier] = nil
 	TriggerClientEvent('ox_lib:notify', source, {description = "You have left the faction.", type = "success"})
-	TriggerEvent('eol_factions:server:leftFaction', faction.user.factionid, player.PlayerData.source, player.PlayerData.citizenid)
+	TriggerEvent('eol_factions:server:leftFaction', faction.user.factionid, player.source, player.identifier)
 end
 
 --#endregion Functions
@@ -746,50 +745,50 @@ end
 --#region Events
 
 RegisterNetEvent('eol_factions:server:procInputFeedback', function(dialog, title, amount)
-	-- catch return from qb-input
+	-- catch return from input
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player or not dialog then return end
+	if not player or not dialog then return end
 
 	for i = 1, amount do
 		if dialog[i] then
 			if title == "Name Your Faction" then
-				createFaction(src, Player, cleanString(dialog[i], true))
+				createFaction(src, player, cleanString(dialog[i], true))
 			elseif title == "Invite Member" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					inviteMember(src, Player, dialog[i])
+					inviteMember(src, player, dialog[i])
 				end
 			elseif title == "Kick Member" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					kickMember(src, Player, dialog[i])
+					kickMember(src, player, dialog[i])
 				end
 			elseif title == "Promote Member" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					promoteMember(src, Player, dialog[i])
+					promoteMember(src, player, dialog[i])
 				end
 			elseif title == "Demote Member" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					demoteMember(src, Player, dialog[i])
+					demoteMember(src, player, dialog[i])
 				end
 			elseif title == "Deposit Money" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					depositMoney(src, Player, dialog[i])
+					depositMoney(src, player, dialog[i])
 				end
 			elseif title == "Withdraw Money" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					withdrawMoney(src, Player, dialog[i])
+					withdrawMoney(src, player, dialog[i])
 				end
 			elseif title == "Transfer Faction Ownership" then
 				dialog[i] = tonumber(dialog[i])
 				if dialog[i] then
-					transferOwner(src, Player, dialog[i])
+					transferOwner(src, player, dialog[i])
 				end
 			end
 		end
@@ -799,9 +798,9 @@ end)
 RegisterNetEvent('eol_factions:server:createFaction', function()
 	-- catch client request to create faction
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	-- make sure player is not in a faction and send qb-input dialog
 	local faction = factionStatus(src)
@@ -817,9 +816,9 @@ end)
 RegisterNetEvent('eol_factions:server:inviteMember', function()
 	-- player wants to invite member to their faction
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -832,9 +831,9 @@ end)
 RegisterNetEvent('eol_factions:server:kickMember', function()
 	-- player wants to kick member from their faction
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -847,9 +846,9 @@ end)
 RegisterNetEvent('eol_factions:server:promoteMember', function()
 	-- player wants to promote a member
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -862,9 +861,9 @@ end)
 RegisterNetEvent('eol_factions:server:demoteMember', function()
 	-- player wants to demote a member
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -877,9 +876,9 @@ end)
 RegisterNetEvent('eol_factions:server:depositMoney', function()
 	-- player wants to deposit money
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -892,9 +891,9 @@ end)
 RegisterNetEvent('eol_factions:server:withdrawMoney', function()
 	-- player wants to withdraw money
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -907,9 +906,9 @@ end)
 RegisterNetEvent('eol_factions:server:claimGrid', function()
 	-- player wants to claim current grid
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if not faction then
@@ -935,9 +934,9 @@ end)
 RegisterNetEvent('eol_factions:server:unclaimGrid', function()
 	-- player wants to unclaim current grid
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if not faction then
@@ -963,9 +962,9 @@ end)
 RegisterNetEvent('eol_factions:server:transferFaction', function()
 	-- user wants to transfer their faction to another member
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
@@ -978,13 +977,13 @@ end)
 RegisterNetEvent('eol_factions:server:leaveFaction', function()
 	-- user wants to leave their faction
 	local src = source
-	local Player = QBCore.Functions.GetPlayer(src)
+	local player = GetPlayer(src)
 
-	if not Player then return end
+	if not player then return end
 
 	local faction = factionStatus(src)
 	if faction then
-		leaveFaction(src, Player, faction)
+		leaveFaction(src, player, faction)
 	else
 		TriggerClientEvent('ox_lib:notify', src, {description = "You are not in a faction!", type = "error"})
 	end
@@ -1019,11 +1018,11 @@ end)
 
 RegisterCommand('faction', function(source)
 	-- add faction menu
-	local Player = QBCore.Functions.GetPlayer(source)
-	if not Player then return end
+	local player = GetPlayer(source)
+	if not player then return end
 
 	for i = 1, #FactionJobBlacklist do
-		if Player.PlayerData.job.name == FactionJobBlacklist[i] then
+		if player.job.name == FactionJobBlacklist[i] then
 			TriggerClientEvent('ox_lib:notify', source, {description = "You're too professional to access this.", type = "error"})
 			return
 		end
@@ -1142,7 +1141,7 @@ CreateThread(function()
 
 		for i, data in pairs(factions) do
 			for k in pairs(data.members) do
-				local ply = QBCore.Functions.GetPlayerByCitizenId(k)
+				local ply = GetPlayerFromIdentifier(k)
 				if ply and factions[i].members[k].power < MaxPowerPerPlayer then
 					local curStatus = factionStatus(ply.source)
 					if curStatus then
