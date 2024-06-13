@@ -2,16 +2,21 @@
 
 Factions for FiveM like Minecraft. Create factions and invite members to them and claim as much land as possible!
 
-## Usage
+## Setup
+
+1. Download the resource from the green `Code` button.
+2. Unpack the downloaded file and make sure the `-main` is removed from the folder name
+3. Execute the sql file in your database
+4. Start your server and enjoy
+
+## Usage In-Game
 
 To use it, execute the command `/faction` to open the faction management menu, from there you can manage the faction you're in or create a faction.
 
 ## Dependencies
 
-qb-core is currently the only supported framework but soon I'll be adding standalone support so you don't need a framework to run this.
+Currently only standalone applications are supported, you can make your own framework application by editing the framework.lua to fit your framework. I don't want frameworks on the repo anymore due to all the maintenance it requires.
 
-* [qb-core](https://github.com/Qbox-project/qb-core)
-* [qb-management](https://github.com/Qbox-project/qb-management)
 * [ox_lib](https://github.com/overextended/ox_lib)
 * [oxmysql](https://github.com/overextended/oxmysql)
 * OneSync (enabled by default with FXServer)

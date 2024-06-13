@@ -4,7 +4,7 @@ game 'gta5'
 name 'eol_factions'
 author 'Vampire#8144 & BerkieB'
 description 'Factions for FiveM like Minecraft'
-version '1.1.0'
+version '1.2.0'
 license 'GNU GPL v3'
 repository 'https://github.com/BerkieBb/eol_factions'
 
